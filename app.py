@@ -1,588 +1,301 @@
-# app.py
-import io, os, zipfile, base64
-from datetime import datetime
-
-import streamlit as st
-from PIL import Image, ImageOps
-from PyPDF2 import PdfReader, PdfWriter
-import fitz # PyMuPDF (para PDF avanzado)
-
-# ---- opcionales: si no están instalados, se ocultan las pestañas ----
-try:
-    from pydub import AudioSegment # requiere ffmpeg en el sistema
-    HAS_AUDIO = True
-except Exception:
-    HAS_AUDIO = False
-
-try:
-    from moviepy.editor import VideoFileClip # requiere ffmpeg
-    HAS_VIDEO = True
-except Exception:
-    HAS_VIDEO = False
-
-# =========================
-# CONFIG & TRADUCCIONES
-# =========================
-st.set_page_config(page_title="Omni Tools", page_icon="🧰", layout="wide")
-
-LANGS = {
-    "es": {"flag":"🇪🇸","name":"Español"},
-    "en": {"flag":"🇬🇧","name":"English"},
-    "fr": {"flag":"🇫🇷","name":"Français"},
-    "de": {"flag":"🇩🇪","name":"Deutsch"},
-    "it": {"flag":"🇮🇹","name":"Italiano"},
-    "pt": {"flag":"🇵🇹","name":"Português"},
-    "ar": {"flag":"🇸🇦","name":"العربية"},
-    "tr": {"flag":"🇹🇷","name":"Türkçe"},
-    "pl": {"flag":"🇵🇱","name":"Polski"},
-    "nl": {"flag":"🇳🇱","name":"Nederlands"},
-    "sv": {"flag":"🇸🇪","name":"Svenska"},
-    "no": {"flag":"🇳🇴","name":"Norsk"},
-    "da": {"flag":"🇩🇰","name":"Dansk"},
-    "fi": {"flag":"🇫🇮","name":"Suomi"},
-    "ru": {"flag":"🇷🇺","name":"Русский"},
-    "hi": {"flag":"🇮🇳","name":"हिन्दी"},
-    "zh": {"flag":"🇨🇳","name":"中文"},
-    "ja": {"flag":"🇯🇵","name":"日本語"},
-    "ko": {"flag":"🇰🇷","name":"한국어"},
-}
-
-# textos por idioma
-TXT = {
-    "title": {
-        "es":"🧰 Herramientas de Archivos Todo-en-Uno",
-        "en":"🧰 All-in-One File Tools",
-        "fr":"🧰 Outils Fichiers Tout-en-Un",
-        "de":"🧰 Datei-Werkzeuge All-in-One",
-        "it":"🧰 Strumenti File All-in-One",
-        "pt":"🧰 Ferramentas de Arquivos Tudo-em-Um",
-        "ar":"🧰 أدوات ملفات شاملة",
-        "tr":"🧰 Hepsi Bir Arada Dosya Araçları",
-        "pl":"🧰 Wszechstronne narzędzia plików",
-        "nl":"🧰 Alles-in-één Bestands­tools",
-        "sv":"🧰 Allt-i-ett filverktyg",
-        "no":"🧰 Alt-i-ett filverktøy",
-        "da":"🧰 Alt-i-én filværktøjer",
-        "fi":"🧰 Kaikki yhdessä -tiedostotyökalut",
-        "ru":"🧰 Набор инструментов для файлов",
-        "hi":"🧰 ऑल-इन-वन फ़ाइल टूल्स",
-        "zh":"🧰 全能文件工具",
-        "ja":"🧰 すべて入りファイルツール",
-        "ko":"🧰 올인원 파일 도구",
-    },
-    "sidebar_lang": {
-        "es":"🌐 Idioma",
-        "en":"🌐 Language",
-        "fr":"🌐 Langue",
-        "de":"🌐 Sprache",
-        "it":"🌐 Lingua",
-        "pt":"🌐 Idioma",
-        "ar":"🌐 اللغة",
-        "tr":"🌐 Dil",
-        "pl":"🌐 Język",
-        "nl":"🌐 Taal",
-        "sv":"🌐 Språk",
-        "no":"🌐 Språk",
-        "da":"🌐 Sprog",
-        "fi":"🌐 Kieli",
-        "ru":"🌐 Язык",
-        "hi":"🌐 भाषा",
-        "zh":"🌐 语言",
-        "ja":"🌐 言語",
-        "ko":"🌐 언어",
-    },
-    "tabs": {
-        "images":{
-            "es":"🖼️ Imágenes",
-            "en":"🖼️ Images",
-            "fr":"🖼️ Images",
-            "de":"🖼️ Bilder",
-            "it":"🖼️ Immagini",
-            "pt":"🖼️ Imagens",
-            "ar":"🖼️ صور",
-            "tr":"🖼️ Görseller",
-            "pl":"🖼️ Obrazy",
-            "nl":"🖼️ Afbeeldingen",
-            "sv":"🖼️ Bilder",
-            "no":"🖼️ Bilder",
-            "da":"🖼️ Billeder",
-            "fi":"🖼️ Kuvat",
-            "ru":"🖼️ Изображения",
-            "hi":"🖼️ चित्र",
-            "zh":"🖼️ 图片",
-            "ja":"🖼️ 画像",
-            "ko":"🖼️ 이미지",
-        },
-        "pdf":{
-            "es":"📄 PDF",
-            "en":"📄 PDF",
-            "fr":"📄 PDF",
-            "de":"📄 PDF",
-            "it":"📄 PDF",
-            "pt":"📄 PDF",
-            "ar":"📄 PDF",
-            "tr":"📄 PDF",
-            "pl":"📄 PDF",
-            "nl":"📄 PDF",
-            "sv":"📄 PDF",
-            "no":"📄 PDF",
-            "da":"📄 PDF",
-            "fi":"📄 PDF",
-            "ru":"📄 PDF",
-            "hi":"📄 PDF",
-            "zh":"📄 PDF",
-            "ja":"📄 PDF",
-            "ko":"📄 PDF",
-        },
-        "text":{
-            "es":"📝 Texto",
-            "en":"📝 Text",
-            "fr":"📝 Texte",
-            "de":"📝 Text",
-            "it":"📝 Testo",
-            "pt":"📝 Texto",
-            "ar":"📝 نص",
-            "tr":"📝 Metin",
-            "pl":"📝 Tekst",
-            "nl":"📝 Tekst",
-            "sv":"📝 Text",
-            "no":"📝 Tekst",
-            "da":"📝 Tekst",
-            "fi":"📝 Teksti",
-            "ru":"📝 Текст",
-            "hi":"📝 पाठ",
-            "zh":"📝 文本",
-            "ja":"📝 テキスト",
-            "ko":"📝 텍스트",
-        },
-        "zip":{
-            "es":"🗜️ ZIP",
-            "en":"🗜️ ZIP",
-            "fr":"🗜️ ZIP",
-            "de":"🗜️ ZIP",
-            "it":"🗜️ ZIP",
-            "pt":"🗜️ ZIP",
-            "ar":"🗜️ ZIP",
-            "tr":"🗜️ ZIP",
-            "pl":"🗜️ ZIP",
-            "nl":"🗜️ ZIP",
-            "sv":"🗜️ ZIP",
-            "no":"🗜️ ZIP",
-            "da":"🗜️ ZIP",
-            "fi":"🗜️ ZIP",
-            "ru":"🗜️ ZIP",
-            "hi":"🗜️ ZIP",
-            "zh":"🗜️ ZIP",
-            "ja":"🗜️ ZIP",
-            "ko":"🗜️ ZIP",
-        },
-        "audio":{
-            "es":"🎵 Audio",
-            "en":"🎵 Audio",
-            "fr":"🎵 Audio",
-            "de":"🎵 Audio",
-            "it":"🎵 Audio",
-            "pt":"🎵 Áudio",
-            "ar":"🎵 صوت",
-            "tr":"🎵 Ses",
-        },
-        "video":{
-            "es":"🎬 Vídeo",
-            "en":"🎬 Video",
-            "fr":"🎬 Vidéo",
-            "de":"🎬 Video",
-            "it":"🎬 Video",
-            "pt":"🎬 Vídeo",
-            "ar":"🎬 فيديو",
-            "tr":"🎬 Video",
-        },
-    },
-    "ui": {
-        "upload_imgs":{
-            "es":"Sube imágenes (JPG/PNG/WebP) — múltiples",
-            "en":"Upload images (JPG/PNG/WebP) — multiple",
-            "fr":"Importez des images (JPG/PNG/WebP) — multiple",
-            "de":"Bilder hochladen (JPG/PNG/WebP) — mehrere",
-            "it":"Carica immagini (JPG/PNG/WebP) — multiple",
-            "pt":"Envie imagens (JPG/PNG/WebP) — múltiplas",
-            "ar":"حمّل صور (JPG/PNG/WebP) — متعدد",
-            "tr":"Görseller yükleyin (JPG/PNG/WebP) — çoklu",
-        },
-        "quality":{
-            "es":"Calidad (JPEG/WebP)",
-            "en":"Quality (JPEG/WebP)",
-            "fr":"Qualité (JPEG/WebP)",
-            "de":"Qualität (JPEG/WebP)",
-            "it":"Qualità (JPEG/WebP)",
-            "pt":"Qualidade (JPEG/WebP)",
-            "ar":"الجودة (JPEG/WebP)",
-            "tr":"Kalite (JPEG/WebP)",
-        },
-        "maxw":{
-            "es":"Ancho máximo (px) — 0 = original",
-            "en":"Max width (px) — 0 = original",
-            "fr":"Largeur max (px) — 0 = original",
-            "de":"Max. Breite (px) — 0 = original",
-            "it":"Larghezza max (px) — 0 = originale",
-            "pt":"Largura máx (px) — 0 = original",
-        },
-        "format":{
-            "es":"Formato de salida",
-            "en":"Output format",
-            "fr":"Format de sortie",
-            "de":"Ausgabeformat",
-            "it":"Formato di output",
-            "pt":"Formato de saída",
-        },
-        "convert":{
-            "es":"Convertir / Comprimir",
-            "en":"Convert / Compress",
-            "fr":"Convertir / Compresser",
-            "de":"Konvertieren / Komprimieren",
-            "it":"Converti / Comprimi",
-            "pt":"Converter / Comprimir",
-            "ar":"تحويل / ضغط",
-            "tr":"Dönüştür / Sıkıştır",
-        },
-        "download_zip":{
-            "es":"Descargar ZIP",
-            "en":"Download ZIP",
-            "fr":"Télécharger ZIP",
-            "de":"ZIP herunterladen",
-            "it":"Scarica ZIP",
-            "pt":"Baixar ZIP",
-            "ar":"تحميل ملف ZIP",
-            "tr":"ZIP indir",
-        },
-        "upload_pdf":{
-            "es":"Sube PDF(s)",
-            "en":"Upload PDF(s)",
-            "fr":"Importez PDF",
-            "de":"PDF(s) hochladen",
-            "it":"Carica PDF",
-            "pt":"Envie PDF(s)",
-        },
-        "pdf_action":{
-            "es":"Acción PDF",
-            "en":"PDF Action",
-            "fr":"Action PDF",
-            "de":"PDF-Aktion",
-            "it":"Azione PDF",
-            "pt":"Ação PDF",
-        },
-        "merge":"Merge/Merge/Assemblern/Unire/Unir",
-        "compress":{
-            "es":"Comprimir (bajar imágenes a 120 DPI)",
-            "en":"Compress (downscale images to 120 DPI)",
-        },
-        "extract_text":{
-            "es":"Extraer texto",
-            "en":"Extract text",
-            "fr":"Extraire le texte",
-            "de":"Text extrahieren",
-            "it":"Estrai testo",
-            "pt":"Extrair texto",
-        },
-        "process":{
-            "es":"Procesar",
-            "en":"Process",
-            "fr":"Traiter",
-            "de":"Verarbeiten",
-            "it":"Elabora",
-            "pt":"Processar",
-            "ar":"تنفيذ",
-            "tr":"İşle",
-        },
-        "download": {
-    "es": "Descargar",
-    "en": "Download",
-    "fr": "Télécharger",
-    "de": "Herunterladen",
-    "it": "Scarica",
-    "pt": "Baixar",
-},
-
-"text_area": {
-    "es": "Pega o escribe tu texto...",
-    "en": "Paste or type your text...",
-},
-
-"ops": {
-    "es": "Operación",
-    "en": "Operation",
-},
-
+# app.py — UI estilo Canva + PDF en memoria (sin guardar archivos)
 import io
-from PyPDF2 import PdfReader, PdfWriter
-from PIL import Image
+import time
+import traceback
+import streamlit as st
+import fitz # PyMuPDF
 
-        "text_area":{
-            "es":"Pega o escribe tu texto…",
-            "en":"Paste or type your text…",
-        },
-        "ops":{
-            "es":"Operación",
-            "en":"Operation",
-        },
-        "to_upper":{"es":"MAYÚSCULAS","en":"UPPERCASE"},
-        "to_lower":{"es":"minúsculas","en":"lowercase"},
-        "replace":{"es":"Buscar/Reemplazar","en":"Find/Replace"},
-        "from":{"es":"Buscar","en":"Find"},
-        "to":{"es":"Reemplazar por","en":"Replace with"},
-        "make_zip":{
-            "es":"Crear ZIP",
-            "en":"Create ZIP",
-        },
-        "unzip":{
-            "es":"Descomprimir ZIP",
-            "en":"Unzip ZIP",
-        },
-        "upload_files":{
-            "es":"Sube archivos",
-            "en":"Upload files",
-        },
-        "ready":{
-            "es":"✅ Listo. Descarga abajo.",
-            "en":"✅ Ready. Download below.",
-        },
-        "not_available":{
-            "es":"No disponible en este servidor.",
-            "en":"Not available on this server.",
-        }
-    }
+# ============== Config básica ==============
+st.set_page_config(page_title="PrintPDF", page_icon="🖨️", layout="wide")
+
+# Ocultar menús de Streamlit (look más “app”)
+st.markdown("""
+<style>
+/* Reset y tipografía suave */
+html, body, [class*="css"] { font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji','Segoe UI Emoji','Segoe UI Symbol' !important; }
+#MainMenu, header, footer {visibility: hidden;}
+
+/* Fondo tipo Canva: claro, limpio */
+body { background: #F7F8FB; }
+
+/* Contenedor principal */
+.canvas-shell {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px;
 }
 
-def t(key, lang):
-    # key puede ser "title" o "ui.upload_imgs" etc.
-    parts = key.split(".")
-    node = TXT
-    for p in parts[:-1]:
-        node = node[p]
-    leaf = parts[-1]
-    entry = node.get(leaf, {})
-    if isinstance(entry, dict):
-        return entry.get(lang, entry.get("en", leaf))
-    return entry
+/* Barra superior estilo Canva */
+.topbar {
+  background: linear-gradient(90deg, #7C3AED 0%, #06B6D4 100%);
+  border-radius: 18px;
+  padding: 18px 22px;
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  box-shadow: 0 8px 30px rgba(124,58,237,.25);
+}
+.brand {
+  font-weight: 800;
+  letter-spacing: .3px;
+  font-size: 18px;
+  padding: 6px 12px;
+  background: rgba(255,255,255,.18);
+  border-radius: 10px;
+}
+.badge {
+  background: rgba(255,255,255,.18);
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+}
 
-# =========================
-# SIDEBAR / LENGUAJE
-# =========================
-lang_options = [f'{LANGS[k]["flag"]} {LANGS[k]["name"]} ({k})' for k in LANGS]
-default_index = list(LANGS.keys()).index("es") if "es" in LANGS else 0
-chosen = st.sidebar.selectbox(t("sidebar_lang", "es"), lang_options, index=default_index)
-current_lang = chosen.split("(")[-1].replace(")","").strip()
+/* Card grande central */
+.card {
+  background: #FFFFFF;
+  border-radius: 20px;
+  box-shadow: 0 14px 40px rgba(16,24,40,.08);
+  padding: 26px;
+}
 
-st.title(t("title", current_lang))
+/* Zonas de acción */
+.row {
+  display: grid;
+  grid-template-columns: 1.2fr .8fr;
+  gap: 24px;
+}
+@media (max-width: 980px){
+  .row { grid-template-columns: 1fr; }
+}
 
-st.caption("⚡ Todo en tu navegador. Nada se almacena en el servidor.")
+/* Área drag & drop visual */
+.dropzone {
+  border: 2px dashed #E5E7EB;
+  border-radius: 16px;
+  padding: 26px;
+  text-align: center;
+  transition: .2s ease;
+  background: #FBFCFE;
+}
+.dropzone:hover {
+  border-color: #C7D2FE;
+  background: #F7F8FF;
+}
 
-# =========================
-# TABS (secciones)
-# =========================
-tabs_labels = [
-    t("tabs.images", current_lang),
-    t("tabs.pdf", current_lang),
-    t("tabs.text", current_lang),
-    t("tabs.zip", current_lang),
-]
+/* Botón primario grande */
+.btn-primary {
+  background: linear-gradient(90deg,#7C3AED 0%, #06B6D4 100%);
+  color: #fff;
+  padding: 12px 18px;
+  font-weight: 700;
+  border-radius: 12px;
+  text-decoration: none;
+  display: inline-block;
+  box-shadow: 0 8px 24px rgba(124,58,237,.25);
+}
+.btn-primary[disabled]{
+  filter: grayscale(.4);
+  opacity: .7;
+}
 
-if HAS_AUDIO:
-    tabs_labels.append(t("tabs.audio", current_lang))
-if HAS_VIDEO:
-    tabs_labels.append(t("tabs.video", current_lang))
+/* Botón secundario */
+.btn-ghost {
+  background: #EEF2FF;
+  color: #3730A3;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-weight: 600;
+  display: inline-block;
+}
 
-tabs = st.tabs(tabs_labels)
+/* Chips */
+.chips {
+  display:flex; gap:10px; flex-wrap:wrap; margin-top:8px;
+}
+.chip {
+  background:#F1F5F9; color:#0F172A; padding:8px 12px; border-radius:999px; font-weight:600; font-size:12px;
+}
 
-# ------------- IMÁGENES -------------
-with tabs[0]:
-    st.subheader(t("tabs.images", current_lang))
-    files = st.file_uploader(t("ui.upload_imgs", current_lang), type=["jpg","jpeg","png","webp"], accept_multiple_files=True)
-    col1,col2,col3 = st.columns(3)
-    with col1:
-        quality = st.slider(t("ui.quality", current_lang), 30, 100, 80, 5)
-    with col2:
-        max_w = st.number_input(t("ui.maxw", current_lang), min_value=0, value=0, step=100)
-    with col3:
-        out_fmt = st.selectbox(t("ui.format", current_lang), ["JPEG","WEBP","PNG","PDF"], index=0)
+/* Preview */
+.preview {
+  background:#FAFAFA; border-radius:16px; padding:12px; border:1px solid #EEE; text-align:center;
+}
 
-    if st.button(t("ui.convert", current_lang), type="primary", use_container_width=True, key="img_convert"):
-        if not files:
-            st.warning("Sube al menos una imagen.")
-        else:
-            zip_buf = io.BytesIO()
-            with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as z:
-                for f in files:
-                    img = Image.open(f).convert("RGB")
-                    if max_w and img.width > max_w:
-                        ratio = max_w / img.width
-                        new_size = (max_w, max(1, int(img.height*ratio)))
-                        img = img.resize(new_size, Image.LANCZOS)
+/* Etiquetas y títulos */
+.h1 { font-size: 28px; font-weight: 800; margin: 2px 0 6px 0; }
+.h2 { font-size: 16px; font-weight: 700; color:#0F172A; margin-top: 8px; }
+.muted { color:#6B7280; font-size:13px; }
+.small { color:#64748B; font-size:12px; }
 
-                    out_io = io.BytesIO()
-                    if out_fmt == "PDF":
-                        img.save(out_io, format="PDF")
-                        ext = "pdf"
-                    else:
-                        img.save(out_io, format=out_fmt, quality=quality, optimize=True)
-                        ext = out_fmt.lower()
-                    out_io.seek(0)
-                    base = os.path.splitext(f.name)[0]
-                    z.writestr(f"{base}.{ext}", out_io.read())
+/* Separador sutil */
+.hr { height:1px; background:#EDF2F7; margin:18px 0; }
 
-            zip_buf.seek(0)
-            st.success(t("ui.ready", current_lang))
-            st.download_button(t("ui.download_zip", current_lang), data=zip_buf, file_name=f"images_{datetime.now().strftime('%Y%m%d_%H%M')}.zip", mime="application/zip", use_container_width=True)
+/* Sliders */
+[data-baseweb="slider"] > div { padding-top: 10px; }
 
-# ------------- PDF -------------
-with tabs[1]:
-    st.subheader("📄 PDF")
-    pdfs = st.file_uploader(t("ui.upload_pdf", current_lang), type=["pdf"], accept_multiple_files=True)
-    action = st.selectbox(t("ui.pdf_action", current_lang), [t("merge","en").split("/")[0], t("ui.compress", current_lang), t("ui.extract_text", current_lang)])
+/* Download container */
+.dl {
+  display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; margin-top:16px;
+}
+</style>
+""", unsafe_allow_html=True)
 
-    if st.button(t("ui.process", current_lang), type="primary", use_container_width=True, key="pdf_process"):
-        if not pdfs:
-            st.warning("Sube al menos un PDF.")
-        else:
-            if action == t("merge","en").split("/")[0]:
-                writer = PdfWriter()
-                for f in pdfs:
-                    r = PdfReader(f)
-                    for p in r.pages:
-                        writer.add_page(p)
-                out = io.BytesIO()
-                writer.write(out)
-                out.seek(0)
-                st.success(t("ui.ready", current_lang))
-                st.download_button(t("ui.download", current_lang)+" PDF", data=out, file_name="merged.pdf", mime="application/pdf", use_container_width=True)
+# ============== UI superior (barra y selector idioma) ==============
+with st.container():
+    st.markdown('<div class="canvas-shell">', unsafe_allow_html=True)
+    st.markdown(f"""
+    <div class="topbar">
+        <div class="brand">PrintPDF</div>
+        <div class="badge">Rápido • Seguro • En memoria</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-            elif action == t("ui.compress", current_lang):
-                # compresión via PyMuPDF: rasterizar imágenes a 120 DPI aprox
-                result = io.BytesIO()
-                with fitz.open(stream=pdfs[0].read(), filetype="pdf") as doc:
-                    new_doc = fitz.open()
-                    for page in doc:
-                        pix = page.get_pixmap(dpi=120) # reducir
-                        img_pdf = fitz.open("pdf", fitz.Image(pix).pdf)
-                        new_doc.insert_pdf(img_pdf)
-                    new_doc.save(result)
-                result.seek(0)
-                st.success(t("ui.ready", current_lang))
-                st.download_button(t("ui.download", current_lang)+" PDF", data=result, file_name="compressed.pdf", mime="application/pdf", use_container_width=True)
+# Idiomas visibles con banderas (simple y claro)
+idiomas = {
+    "es": "Español 🇪🇸",
+    "en": "English 🇺🇸",
+    "fr": "Français 🇫🇷",
+    "de": "Deutsch 🇩🇪",
+    "it": "Italiano 🇮🇹",
+    "pt": "Português 🇵🇹",
+}
+col_a, col_b, col_c = st.columns([1.4,1,1])
+with col_a:
+    lang = st.selectbox("Idioma / Language", list(idiomas.keys()), format_func=lambda k: idiomas[k])
 
-            else: # extract text
-                out_txt = io.StringIO()
-                for f in pdfs:
-                    f.seek(0)
-                    with fitz.open(stream=f.read(), filetype="pdf") as doc:
-                        for page in doc:
-                            out_txt.write(page.get_text())
-                            out_txt.write("\n")
-                b = out_txt.getvalue().encode("utf-8")
-                st.success(t("ui.ready", current_lang))
-                st.download_button(t("ui.download", current_lang)+" .txt", data=b, file_name="extracted.txt", mime="text/plain", use_container_width=True)
+# Textos UI (multiidioma básicos)
+TXT = {
+    "title": {"es":"Tu PDF, más ligero y listo", "en":"Your PDF, lighter & ready", "fr":"Votre PDF, plus léger", "de":"Dein PDF, leichter & bereit", "it":"Il tuo PDF, più leggero", "pt":"Seu PDF, mais leve e pronto"},
+    "subtitle":{"es":"Sube, comprime y descarga. Sin guardar nada en el servidor.", "en":"Upload, compress & download. Nothing stored on server.", "fr":"Téléversez, compressez & téléchargez. Rien n’est stocké.", "de":"Hochladen, komprimieren & herunterladen. Nichts gespeichert.", "it":"Carica, comprimi e scarica. Nulla salvato sul server.", "pt":"Envie, compacte e baixe. Nada fica salvo no servidor."},
+    "upload": {"es":"Arrastra tu PDF aquí o selecciona desde tu dispositivo", "en":"Drag your PDF here or pick from your device", "fr":"Glissez votre PDF ici ou choisissez depuis votre appareil", "de":"Zieh dein PDF hierher oder wähle es vom Gerät", "it":"Trascina qui il tuo PDF o selezionalo dal dispositivo", "pt":"Arraste seu PDF aqui ou selecione do dispositivo"},
+    "quality": {"es":"Calidad de compresión", "en":"Compression quality", "fr":"Qualité de compression", "de":"Komprimierungsqualität", "it":"Qualità di compressione", "pt":"Qualidade de compactação"},
+    "process": {"es":"Comprimir PDF", "en":"Compress PDF", "fr":"Compresser le PDF", "de":"PDF komprimieren", "it":"Comprimi PDF", "pt":"Compactar PDF"},
+    "success": {"es":"¡Listo! Tu PDF está optimizado 🎉", "en":"Done! Your PDF is optimized 🎉", "fr":"C’est fait ! Votre PDF est optimisé 🎉", "de":"Fertig! Dein PDF ist optimiert 🎉", "it":"Fatto! Il tuo PDF è ottimizzato 🎉", "pt":"Pronto! Seu PDF está otimizado 🎉"},
+    "download":{"es":"Descargar PDF", "en":"Download PDF", "fr":"Télécharger le PDF", "de":"PDF herunterladen", "it":"Scarica PDF", "pt":"Baixar PDF"},
+    "info": {"es":"Sube un PDF para comenzar.", "en":"Upload a PDF to get started.", "fr":"Téléversez un PDF pour commencer.", "de":"Lade ein PDF hoch, um zu starten.", "it":"Carica un PDF per iniziare.", "pt":"Envie um PDF para começar."},
+    "error": {"es":"Ocurrió un error. Inténtalo de nuevo.", "en":"Something went wrong. Please try again.", "fr":"Une erreur s’est produite. Réessayez.", "de":"Etwas ist schiefgelaufen. Bitte erneut versuchen.", "it":"Qualcosa è andato storto. Riprova.", "pt":"Algo deu errado. Tente novamente."},
+}
 
-# ------------- TEXTO -------------
-with tabs[2]:
-    st.subheader(t("tabs.text", current_lang))
-    text_in = st.text_area(t("ui.text_area", current_lang), height=180)
-    op = st.selectbox(t("ui.ops", current_lang), [t("to_upper", current_lang), t("to_lower", current_lang), t("replace", current_lang)])
+st.markdown(f"""
+<div style="margin-top:16px" />
+<div class="card">
+  <div class="h1">{TXT["title"][lang]}</div>
+  <div class="muted">{TXT["subtitle"][lang]}</div>
+  <div class="hr"></div>
+""", unsafe_allow_html=True)
 
-    colA,colB = st.columns(2)
-    repl_from = repl_to = ""
-    if op == t("replace", current_lang):
-        with colA:
-            repl_from = st.text_input(t("ui.from", current_lang))
-        with colB:
-            repl_to = st.text_input(t("ui.to", current_lang))
+# ============== Zona principal (izquierda: upload/controles | derecha: preview) ==============
+left, right = st.columns([1.2, 0.8], gap="large")
 
-    if st.button(t("ui.process", current_lang), type="primary", use_container_width=True, key="text_btn"):
-        if not text_in.strip():
-            st.warning("Escribe o pega texto.")
-        else:
-            if op == t("to_upper", current_lang):
-                out = text_in.upper()
-            elif op == t("to_lower", current_lang):
-                out = text_in.lower()
-            else:
-                out = text_in.replace(repl_from, repl_to)
-            st.success(t("ui.ready", current_lang))
-            st.code(out, language="text")
-            st.download_button(t("ui.download", current_lang)+" .txt", data=out.encode("utf-8"), file_name="text.txt", mime="text/plain", use_container_width=True)
+with left:
+    st.markdown(f'<div class="dropzone">{TXT["upload"][lang]}</div>', unsafe_allow_html=True)
+    uploaded = st.file_uploader("", type=["pdf"], label_visibility="collapsed")
 
-# ------------- ZIP -------------
-with tabs[3]:
-    st.subheader("🗜️ ZIP")
-    mode = st.radio("", [t("ui.make_zip", current_lang), t("ui.unzip", current_lang)], horizontal=True)
+    # Controles “visibles” siempre
+    st.markdown('<div class="h2" style="margin-top:10px;">⚙️ ' + TXT["quality"][lang] + '</div>', unsafe_allow_html=True)
+    quality = st.slider("", min_value=10, max_value=100, value=60, step=5, help="Calidad objetivo al recomprimir imágenes embebidas (menor = más compresión).")
 
-    if mode == t("ui.make_zip", current_lang):
-        up = st.file_uploader(t("ui.upload_files", current_lang), accept_multiple_files=True)
-        if st.button(t("ui.process", current_lang), type="primary", use_container_width=True, key="zip_make"):
-            if not up:
-                st.warning("Sube archivos.")
-            else:
-                zbuf = io.BytesIO()
-                with zipfile.ZipFile(zbuf, "w", zipfile.ZIP_DEFLATED) as z:
-                    for f in up:
-                        z.writestr(f.name, f.read())
-                zbuf.seek(0)
-                st.success(t("ui.ready", current_lang))
-                st.download_button(t("ui.download", current_lang)+" ZIP", data=zbuf, file_name="files.zip", mime="application/zip", use_container_width=True)
-    else:
-        z = st.file_uploader("ZIP", type=["zip"])
-        if st.button(t("ui.process", current_lang), type="primary", use_container_width=True, key="zip_un"):
-            if not z:
-                st.warning("Sube un ZIP.")
-            else:
-                with zipfile.ZipFile(io.BytesIO(z.read())) as zip_ref:
-                    names = zip_ref.namelist()
-                    st.success(f"{t('ui.ready', current_lang)}")
-                    for n in names:
-                        data = zip_ref.read(n)
-                        st.download_button(f"⬇️ {n}", data=data, file_name=n, use_container_width=True)
+    st.markdown('<div class="chips"><div class="chip">Sin guardar en servidor</div><div class="chip">Procesado en memoria</div><div class="chip">Vista previa</div></div>', unsafe_allow_html=True)
 
-# ------------- AUDIO (opcional) -------------
-if HAS_AUDIO:
-    with tabs[4]:
-        st.subheader(t("tabs.audio", current_lang))
-        st.caption("Convertir a MP3 (requiere ffmpeg en el servidor).")
-        upa = st.file_uploader("Audio", type=["wav","mp3","ogg","m4a"])
-        if st.button(t("ui.process", current_lang), type="primary", use_container_width=True, key="audio_btn"):
-            if not upa:
-                st.warning("Sube un archivo de audio.")
-            else:
-                try:
-                    raw = io.BytesIO(upa.read())
-                    raw.seek(0)
-                    audio = AudioSegment.from_file(raw)
-                    out_io = io.BytesIO()
-                    audio.export(out_io, format="mp3", bitrate="192k")
-                    out_io.seek(0)
-                    st.success(t("ui.ready", current_lang))
-                    st.download_button(t("ui.download", current_lang)+" MP3", data=out_io, file_name="audio.mp3", mime="audio/mpeg", use_container_width=True)
-                except Exception:
-                    st.error(t("ui.not_available", current_lang))
+    # Acción
+    process_clicked = st.button("✨ " + TXT["process"][lang], type="primary")
 
-# ---------
-import streamlit as st
+with right:
+    st.markdown('<div class="h2">👀 Preview</div>', unsafe_allow_html=True)
+    preview_container = st.empty()
+    meta_container = st.empty()
 
-# Ocultar el menú y el pie de página de Streamlit
-hide_streamlit_style = """
-    <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    </style>
-"""
-st.markdown(hide_streamlit_style, unsafe_allow_html=True)
-# --- Optimización del rendimiento ---
-import streamlit as st
+# ============== Lógica (todo en memoria) ==============
+def preview_pdf_first_page(pdf_bytes: bytes):
+    """Renderiza la primera página a PNG en memoria para previsualizar."""
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        if doc.page_count == 0:
+            return None
+        page = doc.load_page(0)
+        pix = page.get_pixmap(dpi=130, alpha=False)
+        img_bytes = pix.tobytes("png")
+        doc.close()
+        return img_bytes
+    except Exception:
+        return None
 
-@st.cache_data
-def procesar_archivo(archivo):
-    # Procesar archivos solo en memoria (sin guardarlos en disco)
-    file_bytes = archivo.read()
-    file_stream = io.BytesIO(file_bytes)
-    return file_stream
+def compress_pdf(pdf_bytes: bytes, quality_hint: int) -> bytes:
+    """
+    Reescribe el PDF en memoria. Usamos saver con opciones de compresión.
+    Nota: PyMuPDF no tiene 'calidad' directa; el slider guía flags generales.
+    """
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    out = io.BytesIO()
+    # Flags de compresión razonables
+    # garbage=4 → limpieza profunda; deflate=True → comprimir streams; compress=True → recomprime imágenes/objetos.
+    doc.save(out, garbage=4, deflate=True, compress=True, incremental=False)
+    doc.close()
+    out.seek(0)
+    return out.read()
 
+def human_size(num_bytes: int) -> str:
+    for unit in ["B","KB","MB","GB"]:
+        if num_bytes < 1024.0:
+            return f"{num_bytes:3.1f} {unit}"
+        num_bytes /= 1024.0
+    return f"{num_bytes:.1f} TB"
 
+# Mostrar preview inmediata si hay archivo
+if uploaded is None:
+    st.info("ℹ️ " + TXT["info"][lang])
+else:
+    # Leer a memoria
+    original_bytes = uploaded.read()
+    # Preview
+    img = preview_pdf_first_page(original_bytes)
+    if img:
+        with right:
+            with st.container():
+                st.markdown('<div class="preview">', unsafe_allow_html=True)
+                st.image(img, caption="Primera página (preview)", use_container_width=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+    # Metadatos base
+    with right:
+        meta_container.markdown(f"""
+        <div class="small">
+          <b>Nombre:</b> {uploaded.name}<br/>
+          <b>Tamaño original:</b> {human_size(len(original_bytes))}
+        </div>
+        """, unsafe_allow_html=True)
 
+    # Procesar bajo demanda
+    if process_clicked:
+        try:
+            with st.spinner("⏳ Procesando en memoria..."):
+                t0 = time.time()
+                result_bytes = compress_pdf(original_bytes, quality)
+                dt = time.time() - t0
+
+            # Info tamaños
+            before = len(original_bytes)
+            after = len(result_bytes)
+            ratio = (1 - (after / before)) * 100 if before > 0 else 0
+
+            st.success(TXT["success"][lang])
+            st.markdown(f"**⏱️ Tiempo:** {dt:.2f}s • **🔻 Reducción:** {ratio:.1f}% • **📦 Nuevo tamaño:** {human_size(after)}")
+
+            # Botón de descarga (en memoria)
+            st.markdown('<div class="dl">', unsafe_allow_html=True)
+            st.download_button(
+                label="⬇️ " + TXT["download"][lang],
+                data=result_bytes,
+                file_name=f"printpdf_{uploaded.name}",
+                mime="application/pdf",
+                use_container_width=True
+            )
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        except Exception:
+            st.error("❌ " + TXT["error"][lang])
+            with st.expander("Detalles técnicos (oculto al usuario final)"):
+                st.code(traceback.format_exc())
+
+# Cierre del contenedor principal
+st.markdown('</div>', unsafe_allow_html=True)
