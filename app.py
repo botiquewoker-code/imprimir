@@ -548,3 +548,14 @@ if HAS_AUDIO:
                     st.error(t("ui.not_available", current_lang))
 
 # ---------
+import streamlit as st
+
+# Ocultar el menú y el pie de página de Streamlit
+hide_streamlit_style = """
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    </style>
+"""
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
