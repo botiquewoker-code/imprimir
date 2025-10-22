@@ -293,16 +293,29 @@ TXT = {
             "ar":"تنفيذ",
             "tr":"İşle",
         },
-        "download":{
-            "es":"Descargar",
-            "en":"Download",
-            "fr":"Télécharger",
-            "de":"Herunterladen",
-            "it":"Scarica",
-            "pt":"Baixar",
-            import io
-            from PyPDF2 import PdfReader, PdfWriter
-            from PIL import Image        },
+        "download": {
+    "es": "Descargar",
+    "en": "Download",
+    "fr": "Télécharger",
+    "de": "Herunterladen",
+    "it": "Scarica",
+    "pt": "Baixar",
+},
+
+"text_area": {
+    "es": "Pega o escribe tu texto...",
+    "en": "Paste or type your text...",
+},
+
+"ops": {
+    "es": "Operación",
+    "en": "Operation",
+},
+
+import io
+from PyPDF2 import PdfReader, PdfWriter
+from PIL import Image
+
         "text_area":{
             "es":"Pega o escribe tu texto…",
             "en":"Paste or type your text…",
@@ -570,5 +583,6 @@ def procesar_archivo(archivo):
     file_bytes = archivo.read()
     file_stream = io.BytesIO(file_bytes)
     return file_stream
+
 
 
