@@ -559,3 +559,10 @@ hide_streamlit_style = """
     </style>
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+# --- Optimización del rendimiento ---
+import streamlit as st
+
+@st.cache_data
+def procesar_archivo(archivo):
+    """Función básica para cachear archivos y mejorar la velocidad."""
+    return archivo
