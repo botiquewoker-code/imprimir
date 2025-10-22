@@ -300,7 +300,9 @@ TXT = {
             "de":"Herunterladen",
             "it":"Scarica",
             "pt":"Baixar",
-        },
+            import io
+            from PyPDF2 import PdfReader, PdfWriter
+            from PIL import Image        },
         "text_area":{
             "es":"Pega o escribe tu texto…",
             "en":"Paste or type your text…",
@@ -566,3 +568,4 @@ import streamlit as st
 def procesar_archivo(archivo):
     """Función básica para cachear archivos y mejorar la velocidad."""
     return archivo
+
