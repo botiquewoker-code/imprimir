@@ -1,9 +1,2 @@
 streamlit
-pillow
-moviepy
-PyPDF2
-python-docx
-openpyxl
-googletrans==4.0.0-rc1
-requests
 PyMuPDF
