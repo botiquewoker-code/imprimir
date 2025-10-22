@@ -1,7 +1,5 @@
+flask
 streamlit==1.38.0
 Pillow==10.4.0
 PyPDF2==3.0.1
-numpy==1.24.9
-Flask==3.0.3
-gunicorn
-Werkzeug
+numpy==1.23.5
