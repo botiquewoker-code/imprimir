@@ -566,6 +566,9 @@ import streamlit as st
 
 @st.cache_data
 def procesar_archivo(archivo):
-    """Función básica para cachear archivos y mejorar la velocidad."""
-    return archivo
+    # Procesar archivos solo en memoria (sin guardarlos en disco)
+    file_bytes = archivo.read()
+    file_stream = io.BytesIO(file_bytes)
+    return file_stream
+
 
